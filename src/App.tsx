@@ -29,6 +29,7 @@ type SquarePage = {
 
 type TextAlign = "left" | "center" | "right";
 type FontWeight = "normal" | "bold";
+type EditMode = "design" | "content" | "function";
 
 type SquareBlockStyle = {
   backgroundColor: string;
@@ -113,11 +114,17 @@ type DragState =
       originalTextOffsetY: number;
     };
 
+type AlignmentGuide = {
+  x?: number;
+  y?: number;
+};
+
 const STORAGE_KEY = "square-v0.1-data";
 const FALLBACK_STORAGE_KEY = "square:v0.1:state";
 const MIN_BLOCK_WIDTH = 96;
 const MIN_BLOCK_HEIGHT = 52;
 const GRID_SIZE = 12;
+const GUIDE_THRESHOLD = 6;
 const ICONS = {
   logo: "/icons/square-logo.png",
   book: "/icons/square-book.png",
@@ -126,6 +133,7 @@ const ICONS = {
   block: "/icons/square-block.png",
 };
 const PASTEL_SWATCHES = [
+  "transparent",
   "#ffffff",
   "#fff7d6",
   "#ffe8cc",
@@ -331,13 +339,16 @@ function App() {
   const [editingPageTitle, setEditingPageTitle] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showCodes, setShowCodes] = useState(false);
+  const [editMode, setEditMode] = useState<EditMode>("design");
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [showGridAlways, setShowGridAlways] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [alignmentGuide, setAlignmentGuide] = useState<AlignmentGuide | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
 
   const activeBook = data.books[activeBookId] ?? data.books[data.bookIds[0]];
   const currentPage = currentPageId ? data.pages[currentPageId] : undefined;
@@ -359,6 +370,7 @@ function App() {
   const showGrid = Boolean(currentPage?.gridEnabled && (dragState || snapToGrid || showGridAlways));
   const shellClassName = [
     "square-shell",
+    `mode-${editMode}`,
     mobileSidebarOpen ? "sidebar-open" : "",
     mobileInspectorOpen ? "inspector-open" : "",
   ]
@@ -617,11 +629,57 @@ function App() {
     }));
   }
 
-  function addBlock() {
+  function getCanvasBounds() {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    return {
+      width: Math.max(MIN_BLOCK_WIDTH, Math.floor(rect?.width ?? 1200)),
+      height: Math.max(MIN_BLOCK_HEIGHT, Math.floor(rect?.height ?? 760)),
+    };
+  }
+
+  function clampBlockRect(x: number, y: number, width: number, height: number) {
+    const bounds = getCanvasBounds();
+    const nextWidth = Math.min(Math.max(MIN_BLOCK_WIDTH, width), bounds.width);
+    const nextHeight = Math.min(Math.max(MIN_BLOCK_HEIGHT, height), bounds.height);
+    return {
+      x: Math.min(Math.max(0, x), Math.max(0, bounds.width - nextWidth)),
+      y: Math.min(Math.max(0, y), Math.max(0, bounds.height - nextHeight)),
+      width: nextWidth,
+      height: nextHeight,
+    };
+  }
+
+  function getAlignmentGuide(blockId: string, x: number, y: number, width: number, height: number): AlignmentGuide | null {
+    const bounds = getCanvasBounds();
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    const guide: AlignmentGuide = {};
+
+    if (Math.abs(centerX - bounds.width / 2) <= GUIDE_THRESHOLD) guide.x = bounds.width / 2;
+    if (Math.abs(centerY - bounds.height / 2) <= GUIDE_THRESHOLD) guide.y = bounds.height / 2;
+
+    currentBlocks.forEach((block) => {
+      if (block.id === blockId) return;
+      const otherCenterX = block.x + block.width / 2;
+      const otherCenterY = block.y + block.height / 2;
+      if (Math.abs(centerX - otherCenterX) <= GUIDE_THRESHOLD) guide.x = otherCenterX;
+      if (Math.abs(centerY - otherCenterY) <= GUIDE_THRESHOLD) guide.y = otherCenterY;
+    });
+
+    return guide.x || guide.y ? guide : null;
+  }
+
+  function addBlockAt(x?: number, y?: number) {
     if (!currentPage || !activeBook) return;
     const timestamp = now();
     const blockNumber = data.counters.nextBlockNumber;
     const blockId = createId("block");
+    const rect = clampBlockRect(
+      x ?? 72 + currentPage.blockIds.length * 16,
+      y ?? 64 + currentPage.blockIds.length * 16,
+      220,
+      104,
+    );
     commitData((previous) => ({
       ...previous,
       pages: {
@@ -641,10 +699,10 @@ function App() {
           pageId: currentPage.id,
           type: "text",
           role: "content",
-          x: 72 + currentPage.blockIds.length * 16,
-          y: 64 + currentPage.blockIds.length * 16,
-          width: 220,
-          height: 104,
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
           content: { text: "New text block" },
           value: null,
           style: defaultBlockStyle(),
@@ -657,6 +715,10 @@ function App() {
       counters: { ...previous.counters, nextBlockNumber: blockNumber + 1 },
     }), "Block을 추가했습니다");
     setSelectedBlockId(blockId);
+  }
+
+  function addBlock() {
+    addBlockAt();
   }
 
   function updateBlock(blockId: string, patch: Partial<SquareBlock>) {
@@ -695,6 +757,7 @@ function App() {
     }, "Block을 삭제했습니다");
     setSelectedBlockId(null);
     setEditingBlockId(null);
+    setMobileInspectorOpen(false);
   }
 
   function startMove(event: PointerEvent<HTMLDivElement>, block: SquareBlock) {
@@ -745,11 +808,20 @@ function App() {
     const dx = event.clientX - dragState.startX;
     const dy = event.clientY - dragState.startY;
     if (dragState.mode === "move") {
+      const block = data.blocks[dragState.blockId];
+      if (!block) return;
       const nextX = dragState.originalX + dx;
       const nextY = dragState.originalY + dy;
+      const rect = clampBlockRect(
+        snapToGrid ? snap(nextX) : nextX,
+        snapToGrid ? snap(nextY) : nextY,
+        block.width,
+        block.height,
+      );
+      setAlignmentGuide(getAlignmentGuide(block.id, rect.x, rect.y, rect.width, rect.height));
       updateBlock(dragState.blockId, {
-        x: snapToGrid ? snap(nextX) : Math.max(0, nextX),
-        y: snapToGrid ? snap(nextY) : Math.max(0, nextY),
+        x: rect.x,
+        y: rect.y,
       });
       return;
     }
@@ -760,12 +832,26 @@ function App() {
       });
       return;
     }
+    const block = data.blocks[dragState.blockId];
+    if (!block) return;
     const nextWidth = Math.max(MIN_BLOCK_WIDTH, dragState.originalWidth + dx);
     const nextHeight = Math.max(MIN_BLOCK_HEIGHT, dragState.originalHeight + dy);
+    const rect = clampBlockRect(
+      block.x,
+      block.y,
+      snapToGrid ? Math.max(MIN_BLOCK_WIDTH, snap(nextWidth)) : nextWidth,
+      snapToGrid ? Math.max(MIN_BLOCK_HEIGHT, snap(nextHeight)) : nextHeight,
+    );
+    setAlignmentGuide(getAlignmentGuide(block.id, rect.x, rect.y, rect.width, rect.height));
     updateBlock(dragState.blockId, {
-      width: snapToGrid ? Math.max(MIN_BLOCK_WIDTH, snap(nextWidth)) : nextWidth,
-      height: snapToGrid ? Math.max(MIN_BLOCK_HEIGHT, snap(nextHeight)) : nextHeight,
+      width: rect.width,
+      height: rect.height,
     });
+  }
+
+  function stopDragging() {
+    setDragState(null);
+    setAlignmentGuide(null);
   }
 
   function renderPageTree(book: SquareBook, parentPageId?: string, depth = 0) {
@@ -914,6 +1000,13 @@ function App() {
                 </button>
               )}
               <div className="canvas-actions">
+                <div className="edit-mode-tabs" aria-label="edit mode">
+                  {(["design", "content", "function"] as EditMode[]).map((mode) => (
+                    <button className={editMode === mode ? "active" : ""} key={mode} onClick={() => setEditMode(mode)}>
+                      {mode === "design" ? "디자인" : mode === "content" ? "콘텐츠" : "기능"}
+                    </button>
+                  ))}
+                </div>
                 <label className="toolbar-toggle">
                   <input type="checkbox" checked={showGridAlways} onChange={(event) => setShowGridAlways(event.target.checked)} />
                   그리드
@@ -922,15 +1015,21 @@ function App() {
                   <input type="checkbox" checked={snapToGrid} onChange={(event) => setSnapToGrid(event.target.checked)} />
                   정렬 모드
                 </label>
-                <button className="primary-button" onClick={addBlock}>Block 추가</button>
+                <button className="primary-button desktop-add-button" onClick={addBlock}>Block 추가</button>
               </div>
             </div>
             <div
+              ref={canvasRef}
               className={showGrid ? "canvas grid-visible" : "canvas"}
               style={{ backgroundColor: currentPage.backgroundColor, backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px` }}
               onPointerMove={handlePointerMove}
-              onPointerUp={() => setDragState(null)}
-              onPointerLeave={() => setDragState(null)}
+              onPointerUp={stopDragging}
+              onPointerLeave={stopDragging}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                addBlockAt(event.clientX - rect.left, event.clientY - rect.top);
+              }}
               onMouseDown={(event) => {
                 if (event.target === event.currentTarget) {
                   setSelectedBlockId(null);
@@ -942,14 +1041,20 @@ function App() {
                 const style = normalizeBlockStyle(block.style);
                 return (
                   <div
-                    className={block.id === selectedBlockId ? "block selected" : "block"}
+                    className={[
+                      "block",
+                      block.id === selectedBlockId ? "selected" : "",
+                      showCodes ? "has-code" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     key={block.id}
                     style={{
                       left: block.x,
                       top: block.y,
                       width: block.width,
                       height: block.height,
-                      backgroundColor: style.backgroundColor,
+                      backgroundColor: style.backgroundColor === "transparent" ? "transparent" : style.backgroundColor,
                       color: style.textColor,
                       fontSize: style.fontSize,
                       fontWeight: style.fontWeight,
@@ -974,7 +1079,7 @@ function App() {
                     ) : (
                       <div
                         className="block-text"
-                        style={{ left: 10 + style.textOffsetX, top: 10 + style.textOffsetY, textAlign: style.textAlign }}
+                        style={{ left: 10 + style.textOffsetX, top: (showCodes ? 30 : 10) + style.textOffsetY, textAlign: style.textAlign }}
                         onPointerDown={(event) => startTextMove(event, block)}
                       >
                         {block.content.text}
@@ -984,6 +1089,8 @@ function App() {
                   </div>
                 );
               })}
+              {alignmentGuide?.x !== undefined && <div className="alignment-guide vertical" style={{ left: alignmentGuide.x }} />}
+              {alignmentGuide?.y !== undefined && <div className="alignment-guide horizontal" style={{ top: alignmentGuide.y }} />}
             </div>
           </>
         )}
@@ -997,7 +1104,7 @@ function App() {
         {selectedBlock ? (
           <div className="property-list">
             {showCodes && <div className="selected-code">{selectedBlock.code}</div>}
-            <section className="property-section">
+            <section className="property-section content-section">
               <h2>Text</h2>
               <label>
                 내용
@@ -1025,16 +1132,27 @@ function App() {
                 Bold
               </label>
             </section>
-            <section className="property-section">
+            <section className="property-section design-section">
               <h2>Block</h2>
               <div className="swatches">
                 {PASTEL_SWATCHES.map((color) => (
-                  <button className={normalizeBlockStyle(selectedBlock.style).backgroundColor === color ? "swatch active" : "swatch"} key={color} style={{ backgroundColor: color }} title={color} onClick={() => updateBlockStyle(selectedBlock.id, { backgroundColor: color })} />
+                  <button
+                    className={[
+                      normalizeBlockStyle(selectedBlock.style).backgroundColor === color ? "swatch active" : "swatch",
+                      color === "transparent" ? "transparent-swatch" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    key={color}
+                    style={{ backgroundColor: color === "transparent" ? "transparent" : color }}
+                    title={color === "transparent" ? "배경 없음" : color}
+                    onClick={() => updateBlockStyle(selectedBlock.id, { backgroundColor: color })}
+                  />
                 ))}
               </div>
               <label>
                 배경색
-                <input type="color" value={normalizeBlockStyle(selectedBlock.style).backgroundColor} onChange={(event) => updateBlockStyle(selectedBlock.id, { backgroundColor: event.target.value })} />
+                <input type="color" value={normalizeBlockStyle(selectedBlock.style).backgroundColor === "transparent" ? "#ffffff" : normalizeBlockStyle(selectedBlock.style).backgroundColor} onChange={(event) => updateBlockStyle(selectedBlock.id, { backgroundColor: event.target.value })} />
               </label>
               <label>
                 테두리 둥글기
@@ -1045,13 +1163,13 @@ function App() {
                 그림자
               </label>
             </section>
-            <section className="property-section">
+            <section className="property-section design-section">
               <h2>Layout</h2>
               <div className="size-grid">
-                <label>X<input type="number" value={Math.round(selectedBlock.x)} onChange={(event) => updateBlock(selectedBlock.id, { x: Number(event.target.value) })} /></label>
-                <label>Y<input type="number" value={Math.round(selectedBlock.y)} onChange={(event) => updateBlock(selectedBlock.id, { y: Number(event.target.value) })} /></label>
-                <label>W<input type="number" value={Math.round(selectedBlock.width)} onChange={(event) => updateBlock(selectedBlock.id, { width: Math.max(MIN_BLOCK_WIDTH, Number(event.target.value)) })} /></label>
-                <label>H<input type="number" value={Math.round(selectedBlock.height)} onChange={(event) => updateBlock(selectedBlock.id, { height: Math.max(MIN_BLOCK_HEIGHT, Number(event.target.value)) })} /></label>
+                <label>X<input type="number" value={Math.round(selectedBlock.x)} onChange={(event) => updateBlock(selectedBlock.id, clampBlockRect(Number(event.target.value), selectedBlock.y, selectedBlock.width, selectedBlock.height))} /></label>
+                <label>Y<input type="number" value={Math.round(selectedBlock.y)} onChange={(event) => updateBlock(selectedBlock.id, clampBlockRect(selectedBlock.x, Number(event.target.value), selectedBlock.width, selectedBlock.height))} /></label>
+                <label>W<input type="number" value={Math.round(selectedBlock.width)} onChange={(event) => updateBlock(selectedBlock.id, clampBlockRect(selectedBlock.x, selectedBlock.y, Number(event.target.value), selectedBlock.height))} /></label>
+                <label>H<input type="number" value={Math.round(selectedBlock.height)} onChange={(event) => updateBlock(selectedBlock.id, clampBlockRect(selectedBlock.x, selectedBlock.y, selectedBlock.width, Number(event.target.value)))} /></label>
               </div>
             </section>
             <button className="danger-button" onClick={() => deleteBlock(selectedBlock.id)}>Block 삭제</button>

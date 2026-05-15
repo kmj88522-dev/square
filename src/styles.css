@@ -119,6 +119,31 @@ textarea {
   gap: 8px;
 }
 
+.edit-mode-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #d5cdbf;
+  border-radius: 7px;
+  background: #fffefa;
+}
+
+.edit-mode-tabs button {
+  min-height: 26px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: #5c564d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.edit-mode-tabs button.active {
+  background: #e6f1ea;
+  color: #245d40;
+}
+
 .toolbar-toggle {
   display: inline-flex;
   align-items: center;
@@ -459,9 +484,15 @@ textarea {
   background: #e1f1e7;
 }
 
+@media (min-width: 981px) {
+  .desktop-add-button {
+    display: none;
+  }
+}
+
 .canvas {
   position: relative;
-  overflow: auto;
+  overflow: hidden;
   min-width: 0;
   min-height: 0;
   margin: 14px;
@@ -487,13 +518,31 @@ textarea {
   touch-action: none;
 }
 
+.block[style*="transparent"] {
+  background-image:
+    linear-gradient(45deg, rgba(32, 33, 36, 0.05) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(32, 33, 36, 0.05) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(32, 33, 36, 0.05) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(32, 33, 36, 0.05) 75%);
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background-size: 12px 12px;
+}
+
 .block.selected {
   outline: 2px solid #2f8e63;
   outline-offset: 1px;
 }
 
 .block-code {
-  margin-bottom: 6px;
+  position: absolute;
+  top: 7px;
+  left: 9px;
+  z-index: 2;
+  margin: 0;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 254, 250, 0.82);
+  pointer-events: none;
 }
 
 .block-text {
@@ -515,6 +564,14 @@ textarea {
   min-height: 0;
   height: 100%;
   resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.block.has-code textarea {
+  padding-top: 28px;
 }
 
 .resize-handle {
@@ -532,6 +589,35 @@ textarea {
   border-radius: 0;
   background: transparent;
   cursor: nwse-resize;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.block.selected .resize-handle,
+.block:hover .resize-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.alignment-guide {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.alignment-guide.vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #2a86ff;
+}
+
+.alignment-guide.horizontal {
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: #2a86ff;
 }
 
 .property-list,
@@ -553,6 +639,16 @@ textarea {
   margin: 0;
   color: #3b362f;
   font-size: 13px;
+}
+
+.mode-design .content-section,
+.mode-content .design-section {
+  opacity: 0.42;
+}
+
+.mode-function .content-section,
+.mode-function .design-section {
+  opacity: 0.42;
 }
 
 .property-list label {
@@ -618,6 +714,26 @@ textarea {
   min-height: 24px;
   padding: 0;
   border-radius: 5px;
+}
+
+.transparent-swatch {
+  position: relative;
+  overflow: hidden;
+  background-image:
+    linear-gradient(45deg, #d7d2c9 25%, transparent 25%),
+    linear-gradient(-45deg, #d7d2c9 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d7d2c9 75%),
+    linear-gradient(-45deg, transparent 75%, #d7d2c9 75%);
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background-size: 12px 12px;
+}
+
+.transparent-swatch::after {
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(88, 81, 70, 0.4);
+  border-radius: 3px;
+  content: "";
 }
 
 .swatch.active {
@@ -818,6 +934,11 @@ textarea {
     grid-template-columns: 1fr 1fr;
     width: 100%;
     justify-content: stretch;
+  }
+
+  .edit-mode-tabs {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .canvas-actions .primary-button {
