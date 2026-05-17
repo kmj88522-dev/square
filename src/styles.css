@@ -608,6 +608,28 @@ textarea {
   outline-offset: 1px;
 }
 
+.block.hidden-square {
+  border-style: dashed;
+  opacity: 0.42;
+  background-image:
+    repeating-linear-gradient(135deg, rgba(32, 33, 36, 0.08) 0 8px, transparent 8px 16px);
+}
+
+.block.hidden-square::after {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  padding: 2px 5px;
+  border: 1px solid rgba(32, 33, 36, 0.18);
+  border-radius: 4px;
+  background: rgba(255, 254, 250, 0.88);
+  color: #6c665c;
+  content: "Hidden";
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
 .block-code {
   position: absolute;
   top: 7px;

@@ -1310,13 +1310,14 @@ function App() {
               {currentBlocks.map((block) => {
                 const style = normalizeBlockStyle(block.style);
                 const layout = getBlockLayout(block);
-                if (!layout.visible) return null;
+                if (!layout.visible && appMode === "run") return null;
                 return (
                   <div
                     className={[
                       "block",
                       block.id === selectedBlockId ? "selected" : "",
                       showCodes && block.id === selectedBlockId ? "has-code" : "",
+                      !layout.visible ? "hidden-square" : "",
                       !style.fillEnabled ? "no-fill" : "",
                     ]
                       .filter(Boolean)
