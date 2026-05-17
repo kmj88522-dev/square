@@ -79,6 +79,8 @@ type SquareBlock = {
   layoutsByDevice?: Partial<Record<DeviceMode, BlockLayout>>;
   content: {
     text?: string;
+    imageDataUrl?: string;
+    imageName?: string;
   };
   value?: string | number | boolean | null;
   style: SquareBlockStyle;
@@ -236,6 +238,14 @@ function normalizeBlockStyle(style: Partial<SquareBlockStyle> | undefined): Squa
   return normalized;
 }
 
+function normalizeBlockContent(content: SquareBlock["content"] | undefined): SquareBlock["content"] {
+  return {
+    text: content?.text ?? "",
+    imageDataUrl: content?.imageDataUrl,
+    imageName: content?.imageName,
+  };
+}
+
 function layoutFromBlock(block: Pick<SquareBlock, "x" | "y" | "width" | "height" | "visible">): BlockLayout {
   return {
     x: block.x,
@@ -341,6 +351,7 @@ function migrateData(value: unknown): SquareData | null {
           id,
           {
             ...block,
+            content: normalizeBlockContent(block.content),
             style: normalizeBlockStyle(block.style),
             layoutsByDevice: normalizeBlockLayouts(block),
             actions: normalizeBlockActions(block.actions),
@@ -369,6 +380,7 @@ function migrateData(value: unknown): SquareData | null {
           id,
           {
             ...block,
+            content: normalizeBlockContent(block.content),
             style: normalizeBlockStyle(block.style),
             layoutsByDevice: normalizeBlockLayouts(block),
             actions: normalizeBlockActions(block.actions),
@@ -394,6 +406,7 @@ function migrateData(value: unknown): SquareData | null {
           id,
           {
             ...block,
+            content: normalizeBlockContent(block.content),
             style: normalizeBlockStyle(block.style),
             layoutsByDevice: normalizeBlockLayouts(block),
             actions: normalizeBlockActions(block.actions),
@@ -968,6 +981,38 @@ function App() {
     }));
   }
 
+  function importBlockImage(event: ChangeEvent<HTMLInputElement>, blockId: string) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setToast("이미지 파일만 추가할 수 있습니다");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const block = data.blocks[blockId];
+      if (!block) return;
+      updateBlock(blockId, {
+        content: {
+          ...block.content,
+          imageDataUrl: String(reader.result),
+          imageName: file.name,
+        },
+      });
+      setToast("이미지를 추가했습니다");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeBlockImage(blockId: string) {
+    const block = data.blocks[blockId];
+    if (!block) return;
+    const { imageDataUrl: _imageDataUrl, imageName: _imageName, ...nextContent } = block.content;
+    updateBlock(blockId, { content: nextContent });
+    setToast("이미지를 제거했습니다");
+  }
+
   function updateBlockActions(blockId: string, actions: BlockAction[]) {
     updateBlock(blockId, { actions: normalizeBlockActions(actions) });
   }
@@ -1403,6 +1448,9 @@ function App() {
                     }}
                   >
                     {showCodes && block.id === selectedBlockId && <div className="block-code">{block.code}</div>}
+                    {block.content.imageDataUrl && (
+                      <img className="block-image" src={block.content.imageDataUrl} alt={block.content.imageName || ""} draggable={false} />
+                    )}
                     {editingBlockId === block.id ? (
                       <textarea
                         autoFocus
@@ -1445,6 +1493,23 @@ function App() {
                 내용
                 <textarea value={selectedBlock.content.text ?? ""} onChange={(event) => updateBlock(selectedBlock.id, { content: { ...selectedBlock.content, text: event.target.value } })} />
               </label>
+              <div className="image-tools">
+                <div className="image-tool-head">
+                  <span>이미지</span>
+                  {selectedBlock.content.imageName && <small>{selectedBlock.content.imageName}</small>}
+                </div>
+                {selectedBlock.content.imageDataUrl ? (
+                  <div className="image-preview">
+                    <img src={selectedBlock.content.imageDataUrl} alt={selectedBlock.content.imageName || ""} />
+                    <button type="button" onClick={() => removeBlockImage(selectedBlock.id)}>이미지 제거</button>
+                  </div>
+                ) : (
+                  <label className="upload-button">
+                    이미지 삽입
+                    <input type="file" accept="image/*" onChange={(event) => importBlockImage(event, selectedBlock.id)} />
+                  </label>
+                )}
+              </div>
               <div className="split-row">
                 <label>
                   글자 크기

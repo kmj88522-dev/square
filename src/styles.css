@@ -703,6 +703,7 @@ textarea {
 .block-text {
   position: absolute;
   right: 10px;
+  z-index: 2;
   max-height: calc(100% - 20px);
   overflow: hidden;
   white-space: pre-wrap;
@@ -716,6 +717,8 @@ textarea {
 }
 
 .block textarea {
+  position: relative;
+  z-index: 3;
   min-height: 0;
   height: 100%;
   resize: none;
@@ -727,6 +730,17 @@ textarea {
 
 .block.has-code textarea {
   padding-top: 28px;
+}
+
+.block-image {
+  position: absolute;
+  inset: 8px;
+  z-index: 1;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
 }
 
 .resize-handle {
@@ -991,6 +1005,60 @@ textarea {
   background: #e3f2e9;
   color: #245d40;
   font-weight: 800;
+}
+
+.image-tools {
+  display: grid;
+  gap: 8px;
+}
+
+.image-tool-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #5c564d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.image-tool-head small {
+  overflow: hidden;
+  color: #8d8578;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid #c9c3b7;
+  border-radius: 6px;
+  background: #fffefa;
+  color: #3f3a33;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.upload-button input {
+  display: none;
+}
+
+.image-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.image-preview img {
+  width: 100%;
+  max-height: 120px;
+  border: 1px solid #d8d1c3;
+  border-radius: 6px;
+  object-fit: contain;
+  background: #fffefa;
 }
 
 .swatches {
