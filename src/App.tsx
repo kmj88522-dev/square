@@ -190,6 +190,12 @@ function formatCode(prefix: string, value: number) {
   return `${prefix}${String(value).padStart(3, "0")}`;
 }
 
+function squareTypeLabel(type: SquareBlock["type"]) {
+  if (type === "button") return "Button Square";
+  if (type === "container") return "Container Square";
+  return "Text Square";
+}
+
 function SquareIcon({ src, size = 18 }: { src: string; size?: number }) {
   return (
     <span className="square-icon-frame" style={{ width: size, height: size }} aria-hidden="true">
@@ -901,7 +907,7 @@ function App() {
             tablet: { ...rect, visible: true },
             mobile: { ...rect, visible: true },
           },
-          content: { text: "New text block" },
+          content: { text: "New text square" },
           value: null,
           style: defaultBlockStyle(),
           visible: true,
@@ -911,7 +917,7 @@ function App() {
         },
       },
       counters: { ...previous.counters, nextBlockNumber: blockNumber + 1 },
-    }), "Block을 추가했습니다");
+    }), "Square를 추가했습니다");
     setSelectedBlockId(blockId);
   }
 
@@ -990,7 +996,7 @@ function App() {
           },
         },
       };
-    }, "Block을 삭제했습니다");
+    }, "Square를 삭제했습니다");
     setSelectedBlockId(null);
     setEditingBlockId(null);
     setMobileInspectorOpen(false);
@@ -1282,7 +1288,7 @@ function App() {
                 </label>
                 <button className="primary-button desktop-add-button" onClick={addBlock}>
                   <SquareIcon src={ICONS.block} size={17} />
-                  Block 추가
+                  Square 추가
                 </button>
               </div>
             </div>
@@ -1357,7 +1363,7 @@ function App() {
                         {block.content.text}
                       </div>
                     )}
-                    <button className="resize-handle" aria-label="resize block" onPointerDown={(event) => startResize(event, block)} />
+                    <button className="resize-handle" aria-label="resize square" onPointerDown={(event) => startResize(event, block)} />
                   </div>
                 );
               })}
@@ -1370,7 +1376,7 @@ function App() {
 
       <aside className="inspector">
         <div className="inspector-head">
-          <div className="panel-title">Properties</div>
+          <div className="panel-title">Square Properties</div>
           <button className="mobile-close-button" onClick={() => setMobileInspectorOpen(false)}>닫기</button>
         </div>
         {selectedBlock ? (
@@ -1405,7 +1411,7 @@ function App() {
               </label>
             </section>
             <section className="property-section function-section">
-              <h2>Actions</h2>
+              <h2>Square Actions</h2>
               <div className="action-list">
                 {normalizeBlockActions(selectedBlock.actions).map((action) => {
                   const needsBlockTarget = action.type === "show_block" || action.type === "hide_block" || action.type === "toggle_block";
@@ -1441,12 +1447,12 @@ function App() {
                       )}
                       {needsBlockTarget && (
                         <label>
-                          Target Block
+                          Target Square
                           <select value={action.targetCode ?? ""} onChange={(event) => updateBlockAction(selectedBlock.id, action.id, { targetCode: event.target.value })}>
-                            <option value="">Select block</option>
+                            <option value="">Select square</option>
                             {blockTargets.map((block) => (
                               <option key={block.id} value={block.code}>
-                                {block.code} {block.content.text || block.type}
+                                {block.code} {block.content.text || squareTypeLabel(block.type)}
                               </option>
                             ))}
                           </select>
@@ -1466,7 +1472,7 @@ function App() {
               <button onClick={() => addBlockAction(selectedBlock.id)}>Add action</button>
             </section>
             <section className="property-section design-section">
-              <h2>Block</h2>
+              <h2>Square Style</h2>
               <label className="checkbox-row">
                 <input type="checkbox" checked={!normalizeBlockStyle(selectedBlock.style).fillEnabled} onChange={(event) => updateBlockStyle(selectedBlock.id, { fillEnabled: !event.target.checked })} />
                 채우기 없음
@@ -1517,10 +1523,10 @@ function App() {
                 </>
               )}
             </section>
-            <button className="danger-button" onClick={() => deleteBlock(selectedBlock.id)}>Block 삭제</button>
+            <button className="danger-button" onClick={() => deleteBlock(selectedBlock.id)}>Square 삭제</button>
           </div>
         ) : (
-          <p className="empty-state">선택된 Block이 없습니다.</p>
+          <p className="empty-state">선택된 Square가 없습니다.</p>
         )}
       </aside>
       {selectedBlock && (
