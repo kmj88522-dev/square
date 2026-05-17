@@ -420,7 +420,6 @@ function App() {
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [editingPageTitle, setEditingPageTitle] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [showCodes, setShowCodes] = useState(false);
   const [appMode, setAppMode] = useState<AppMode>("edit");
   const [editMode, setEditMode] = useState<EditMode>("design");
   const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
@@ -455,6 +454,7 @@ function App() {
   }, [activeBook, currentPage, data.pages]);
   const pageTargets = useMemo(() => Object.values(data.pages).filter((page) => page.bookId === activeBook?.id), [activeBook, data.pages]);
   const blockTargets = useMemo(() => Object.values(data.blocks).filter((block) => block.bookId === activeBook?.id), [activeBook, data.blocks]);
+  const showCodes = editMode === "function";
   const showGrid = Boolean(currentPage?.gridEnabled && (dragState || snapToGrid || showGridAlways));
   const gridSize = currentPage?.gridSize || GRID_SIZE;
   const mobileTitle = currentPath.length > 0 ? currentPath.join(" / ") : "Square";
@@ -1223,10 +1223,6 @@ function App() {
         <div className="sidebar-tools">
           <button className="plain-tool" onClick={exportBackup}>백업 내보내기</button>
           <button className="plain-tool" onClick={() => importInputRef.current?.click()}>백업 불러오기</button>
-          <label className="plain-tool checkbox-tool">
-            <input type="checkbox" checked={showCodes} onChange={(event) => setShowCodes(event.target.checked)} />
-            코드 표시
-          </label>
           <input ref={importInputRef} className="hidden-input" type="file" accept="application/json" onChange={importBackup} />
         </div>
       </aside>
