@@ -196,6 +196,14 @@ function squareTypeLabel(type: SquareBlock["type"]) {
   return "Text Square";
 }
 
+function squareActionLabel(type: BlockActionType) {
+  if (type === "show_block") return "show";
+  if (type === "hide_block") return "hide";
+  if (type === "toggle_block") return "toggle";
+  if (type === "go_page") return "page";
+  return "url";
+}
+
 function SquareIcon({ src, size = 18 }: { src: string; size?: number }) {
   return (
     <span className="square-icon-frame" style={{ width: size, height: size }} aria-hidden="true">
@@ -455,6 +463,31 @@ function App() {
   const pageTargets = useMemo(() => Object.values(data.pages).filter((page) => page.bookId === activeBook?.id), [activeBook, data.pages]);
   const blockTargets = useMemo(() => Object.values(data.blocks).filter((block) => block.bookId === activeBook?.id), [activeBook, data.blocks]);
   const showCodes = editMode === "function";
+  const showLogicOverlay = appMode === "edit" && editMode === "function";
+  const logicLinks = useMemo(() => {
+    const blocksByCode = new Map(currentBlocks.map((block) => [block.code, block]));
+    return currentBlocks.flatMap((source) => {
+      const sourceLayout = getBlockLayout(source);
+      return normalizeBlockActions(source.actions)
+        .filter((action) => action.enabled && (action.type === "show_block" || action.type === "hide_block" || action.type === "toggle_block"))
+        .map((action) => {
+          const target = blocksByCode.get(action.targetCode ?? "");
+          if (!target) return null;
+          const targetLayout = getBlockLayout(target);
+          return {
+            id: action.id,
+            type: action.type,
+            source,
+            target,
+            x1: sourceLayout.x + sourceLayout.width / 2,
+            y1: sourceLayout.y + sourceLayout.height / 2,
+            x2: targetLayout.x + targetLayout.width / 2,
+            y2: targetLayout.y + targetLayout.height / 2,
+          };
+        })
+        .filter((link): link is NonNullable<typeof link> => Boolean(link));
+    });
+  }, [currentBlocks, deviceMode]);
   const showGrid = Boolean(currentPage?.gridEnabled && (dragState || snapToGrid || showGridAlways));
   const gridSize = currentPage?.gridSize || GRID_SIZE;
   const mobileTitle = currentPath.length > 0 ? currentPath.join(" / ") : "Square";
@@ -1307,6 +1340,33 @@ function App() {
                 }
               }}
             >
+              {showLogicOverlay && (
+                <svg className="logic-overlay" aria-hidden="true">
+                  <defs>
+                    <marker id="logic-arrow" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
+                      <path d="M0,0 L8,4 L0,8 Z" />
+                    </marker>
+                  </defs>
+                  {logicLinks.map((link) => {
+                    const selected = selectedBlockId === link.source.id || selectedBlockId === link.target.id;
+                    const midX = (link.x1 + link.x2) / 2;
+                    const midY = (link.y1 + link.y2) / 2;
+                    return (
+                      <g className={selected ? "logic-link selected" : "logic-link"} key={link.id}>
+                        <line x1={link.x1} y1={link.y1} x2={link.x2} y2={link.y2} />
+                        <text x={midX} y={midY - 8}>
+                          {squareActionLabel(link.type)}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+              {showLogicOverlay && logicLinks.length === 0 && (
+                <div className="logic-empty">
+                  Square Actions에서 show/hide/toggle 대상 Square를 지정하면 이 화면에 연결선이 표시됩니다.
+                </div>
+              )}
               {currentBlocks.map((block) => {
                 const style = normalizeBlockStyle(block.style);
                 const layout = getBlockLayout(block);
