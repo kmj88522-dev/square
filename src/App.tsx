@@ -1563,22 +1563,27 @@ function App() {
               </label>
             </section>
             <section className="property-section design-section layout-section">
-              <h2>Layout</h2>
-              {selectedLayout && (
-                <>
-                  <div className="layout-mode-note">현재 {deviceMode} 레이아웃을 편집 중입니다.</div>
-                  <label className="checkbox-row">
-                    <input type="checkbox" checked={selectedLayout.visible} onChange={(event) => updateBlockLayout(selectedBlock.id, { visible: event.target.checked })} />
-                    이 기기에서 표시
-                  </label>
-                  <div className="size-grid">
-                    <label>X<input type="number" value={Math.round(selectedLayout.x)} onChange={(event) => updateBlockLayout(selectedBlock.id, clampBlockRect(Number(event.target.value), selectedLayout.y, selectedLayout.width, selectedLayout.height, snapToGrid))} /></label>
-                    <label>Y<input type="number" value={Math.round(selectedLayout.y)} onChange={(event) => updateBlockLayout(selectedBlock.id, clampBlockRect(selectedLayout.x, Number(event.target.value), selectedLayout.width, selectedLayout.height, snapToGrid))} /></label>
-                    <label>W<input type="number" value={Math.round(selectedLayout.width)} onChange={(event) => updateBlockLayout(selectedBlock.id, clampBlockRect(selectedLayout.x, selectedLayout.y, Number(event.target.value), selectedLayout.height, snapToGrid))} /></label>
-                    <label>H<input type="number" value={Math.round(selectedLayout.height)} onChange={(event) => updateBlockLayout(selectedBlock.id, clampBlockRect(selectedLayout.x, selectedLayout.y, selectedLayout.width, Number(event.target.value), snapToGrid))} /></label>
+              <details className="layout-details">
+                <summary>
+                  <span>Layout</span>
+                  <small>{deviceMode} layout</small>
+                </summary>
+                {selectedLayout && (
+                  <div className="layout-details-body">
+                    <div className="layout-mode-note">현재 {deviceMode} 레이아웃을 편집 중입니다.</div>
+                    <label className="checkbox-row">
+                      <input type="checkbox" checked={selectedLayout.visible} onChange={(event) => updateBlockLayout(selectedBlock.id, { visible: event.target.checked })} />
+                      이 기기에서 표시
+                    </label>
+                    <div className="size-grid">
+                      <label>X<input type="number" value={Math.round(selectedLayout.x)} onChange={(event) => updateBlockLayout(selectedBlock.id, clampBlockRect(Number(event.target.value), selectedLayout.y, selectedLayout.width, selectedLayout.height, snapToGrid))} /></label>
+                      <label>Y<input type="number" value={Math.round(selectedLayout.y)} onChange={(event) => updateBlockLayout(selectedBlock.id, clampBlockRect(selectedLayout.x, Number(event.target.value), selectedLayout.width, selectedLayout.height, snapToGrid))} /></label>
+                      <label>W<input type="number" value={Math.round(selectedLayout.width)} onChange={(event) => updateBlockLayout(selectedBlock.id, clampBlockRect(selectedLayout.x, selectedLayout.y, Number(event.target.value), selectedLayout.height, snapToGrid))} /></label>
+                      <label>H<input type="number" value={Math.round(selectedLayout.height)} onChange={(event) => updateBlockLayout(selectedBlock.id, clampBlockRect(selectedLayout.x, selectedLayout.y, selectedLayout.width, Number(event.target.value), snapToGrid))} /></label>
+                    </div>
                   </div>
-                </>
-              )}
+                )}
+              </details>
             </section>
             <button className="danger-button" onClick={() => deleteBlock(selectedBlock.id)}>Square 삭제</button>
           </div>
