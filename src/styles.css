@@ -25,6 +25,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -50,6 +51,7 @@ button:disabled {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid #c9c3b7;
@@ -151,6 +153,7 @@ textarea {
   gap: 8px;
 }
 
+.app-mode-tabs,
 .edit-mode-tabs,
 .device-mode-tabs {
   display: inline-grid;
@@ -159,6 +162,11 @@ textarea {
   border: 1px solid #d5cdbf;
   border-radius: 7px;
   background: #fffefa;
+}
+
+.app-mode-tabs {
+  grid-template-columns: repeat(2, auto);
+  background: #f3f7f4;
 }
 
 .edit-mode-tabs {
@@ -170,6 +178,7 @@ textarea {
   background: #f7f3ea;
 }
 
+.app-mode-tabs button,
 .edit-mode-tabs button,
 .device-mode-tabs button {
   min-height: 26px;
@@ -181,6 +190,7 @@ textarea {
   font-weight: 800;
 }
 
+.app-mode-tabs button.active,
 .edit-mode-tabs button.active,
 .device-mode-tabs button.active {
   background: #e6f1ea;
@@ -640,6 +650,14 @@ textarea {
   pointer-events: auto;
 }
 
+.app-run .resize-handle {
+  display: none;
+}
+
+.app-run .block {
+  cursor: pointer;
+}
+
 .alignment-guide {
   position: absolute;
   z-index: 4;
@@ -688,13 +706,29 @@ textarea {
 }
 
 .mode-design .content-section,
-.mode-content .design-section {
+.mode-design .function-section,
+.mode-content .design-section,
+.mode-content .function-section {
   opacity: 0.42;
 }
 
 .mode-function .content-section,
 .mode-function .design-section {
   opacity: 0.42;
+}
+
+.action-list {
+  display: grid;
+  gap: 10px;
+}
+
+.action-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d5cdbf;
+  border-radius: 6px;
+  background: #fffefa;
 }
 
 .property-list label {
@@ -1003,6 +1037,11 @@ textarea {
   .edit-mode-tabs {
     grid-column: 1 / -1;
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .app-mode-tabs {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .device-mode-tabs {

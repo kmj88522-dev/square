@@ -31,6 +31,17 @@ type TextAlign = "left" | "center" | "right";
 type FontWeight = "normal" | "bold";
 type EditMode = "design" | "content" | "function";
 type DeviceMode = "desktop" | "tablet" | "mobile";
+type AppMode = "edit" | "run";
+type BlockActionType = "go_page" | "show_block" | "hide_block" | "toggle_block" | "open_url";
+
+type BlockAction = {
+  id: string;
+  event: "click";
+  type: BlockActionType;
+  targetCode?: string;
+  url?: string;
+  enabled: boolean;
+};
 
 type BlockLayout = {
   x: number;
@@ -71,6 +82,7 @@ type SquareBlock = {
   };
   value?: string | number | boolean | null;
   style: SquareBlockStyle;
+  actions?: BlockAction[];
   visible: boolean;
   locked: boolean;
   createdAt: string;
@@ -163,6 +175,7 @@ const PASTEL_SWATCHES = [
   "#dfe5e1",
 ];
 const DEVICE_MODES: DeviceMode[] = ["desktop", "tablet", "mobile"];
+const ACTION_TYPES: BlockActionType[] = ["go_page", "show_block", "hide_block", "toggle_block", "open_url"];
 
 function now() {
   return new Date().toISOString();
@@ -225,6 +238,19 @@ function normalizeBlockLayouts(block: SquareBlock): Partial<Record<DeviceMode, B
     desktop: fallback,
     ...block.layoutsByDevice,
   };
+}
+
+function normalizeBlockActions(actions: BlockAction[] | undefined): BlockAction[] {
+  return (actions ?? [])
+    .filter((action) => action && action.event === "click")
+    .map((action) => ({
+      id: action.id || createId("action"),
+      event: "click",
+      type: ACTION_TYPES.includes(action.type) ? action.type : "go_page",
+      targetCode: action.targetCode,
+      url: action.url,
+      enabled: action.enabled !== false,
+    }));
 }
 
 function snap(value: number, gridSize = GRID_SIZE) {
@@ -303,6 +329,7 @@ function migrateData(value: unknown): SquareData | null {
             ...block,
             style: normalizeBlockStyle(block.style),
             layoutsByDevice: normalizeBlockLayouts(block),
+            actions: normalizeBlockActions(block.actions),
           },
         ]),
       ),
@@ -330,6 +357,7 @@ function migrateData(value: unknown): SquareData | null {
             ...block,
             style: normalizeBlockStyle(block.style),
             layoutsByDevice: normalizeBlockLayouts(block),
+            actions: normalizeBlockActions(block.actions),
           },
         ]),
       ),
@@ -354,6 +382,7 @@ function migrateData(value: unknown): SquareData | null {
             ...block,
             style: normalizeBlockStyle(block.style),
             layoutsByDevice: normalizeBlockLayouts(block),
+            actions: normalizeBlockActions(block.actions),
           },
         ]),
       ),
@@ -386,6 +415,7 @@ function App() {
   const [editingPageTitle, setEditingPageTitle] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showCodes, setShowCodes] = useState(false);
+  const [appMode, setAppMode] = useState<AppMode>("edit");
   const [editMode, setEditMode] = useState<EditMode>("design");
   const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
   const [snapToGrid, setSnapToGrid] = useState(false);
@@ -417,11 +447,14 @@ function App() {
     }
     return [activeBook.title, ...pages.map((item) => item.title)];
   }, [activeBook, currentPage, data.pages]);
+  const pageTargets = useMemo(() => Object.values(data.pages).filter((page) => page.bookId === activeBook?.id), [activeBook, data.pages]);
+  const blockTargets = useMemo(() => Object.values(data.blocks).filter((block) => block.bookId === activeBook?.id), [activeBook, data.blocks]);
   const showGrid = Boolean(currentPage?.gridEnabled && (dragState || snapToGrid || showGridAlways));
   const gridSize = currentPage?.gridSize || GRID_SIZE;
   const mobileTitle = currentPath.length > 0 ? currentPath.join(" / ") : "Square";
   const shellClassName = [
     "square-shell",
+    `app-${appMode}`,
     `mode-${editMode}`,
     `device-${deviceMode}`,
     mobileSidebarOpen ? "sidebar-open" : "",
@@ -721,6 +754,65 @@ function App() {
     });
   }
 
+  function findPageByCode(code: string | undefined) {
+    if (!code) return undefined;
+    return Object.values(data.pages).find((page) => page.code === code);
+  }
+
+  function findBlockByCode(code: string | undefined) {
+    if (!code) return undefined;
+    return Object.values(data.blocks).find((block) => block.code === code);
+  }
+
+  function setBlockVisibilityByCode(code: string | undefined, resolver: (visible: boolean) => boolean) {
+    const target = findBlockByCode(code);
+    if (!target) {
+      setToast(`Target ${code || ""} not found`);
+      console.warn(`Square action target not found: ${code}`);
+      return;
+    }
+    const layout = getBlockLayout(target);
+    const visible = resolver(layout.visible);
+    updateBlockLayout(target.id, { visible });
+    if (deviceMode === "desktop") updateBlock(target.id, { visible });
+  }
+
+  function executeBlockActions(block: SquareBlock) {
+    normalizeBlockActions(block.actions)
+      .filter((action) => action.enabled && action.event === "click")
+      .forEach((action) => {
+        if (action.type === "go_page") {
+          const page = findPageByCode(action.targetCode);
+          if (!page) {
+            setToast(`Target ${action.targetCode || ""} not found`);
+            console.warn(`Square action target not found: ${action.targetCode}`);
+            return;
+          }
+          selectPage(page.id);
+          return;
+        }
+        if (action.type === "show_block") {
+          setBlockVisibilityByCode(action.targetCode, () => true);
+          return;
+        }
+        if (action.type === "hide_block") {
+          setBlockVisibilityByCode(action.targetCode, () => false);
+          return;
+        }
+        if (action.type === "toggle_block") {
+          setBlockVisibilityByCode(action.targetCode, (visible) => !visible);
+          return;
+        }
+        if (action.type === "open_url") {
+          if (!action.url) {
+            setToast("URL is empty");
+            return;
+          }
+          window.open(action.url, "_blank", "noopener,noreferrer");
+        }
+      });
+  }
+
   function getCanvasBounds() {
     const rect = canvasRef.current?.getBoundingClientRect();
     const width = Math.floor(rect?.width ?? 1200);
@@ -837,6 +929,43 @@ function App() {
     }));
   }
 
+  function updateBlockActions(blockId: string, actions: BlockAction[]) {
+    updateBlock(blockId, { actions: normalizeBlockActions(actions) });
+  }
+
+  function addBlockAction(blockId: string) {
+    const block = data.blocks[blockId];
+    if (!block) return;
+    updateBlockActions(blockId, [
+      ...normalizeBlockActions(block.actions),
+      {
+        id: createId("action"),
+        event: "click",
+        type: "go_page",
+        targetCode: "",
+        enabled: true,
+      },
+    ]);
+  }
+
+  function updateBlockAction(blockId: string, actionId: string, patch: Partial<BlockAction>) {
+    const block = data.blocks[blockId];
+    if (!block) return;
+    updateBlockActions(
+      blockId,
+      normalizeBlockActions(block.actions).map((action) => (action.id === actionId ? { ...action, ...patch } : action)),
+    );
+  }
+
+  function removeBlockAction(blockId: string, actionId: string) {
+    const block = data.blocks[blockId];
+    if (!block) return;
+    updateBlockActions(
+      blockId,
+      normalizeBlockActions(block.actions).filter((action) => action.id !== actionId),
+    );
+  }
+
   function updateBlockStyle(blockId: string, patch: Partial<SquareBlockStyle>) {
     const block = data.blocks[blockId];
     if (!block) return;
@@ -868,6 +997,11 @@ function App() {
   }
 
   function startMove(event: PointerEvent<HTMLDivElement>, block: SquareBlock) {
+    if (appMode === "run") {
+      event.stopPropagation();
+      executeBlockActions(block);
+      return;
+    }
     if (editingBlockId === block.id) return;
     const layout = getBlockLayout(block);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -1117,6 +1251,13 @@ function App() {
                 </button>
               )}
               <div className="canvas-actions">
+                <div className="app-mode-tabs" aria-label="app mode">
+                  {(["edit", "run"] as AppMode[]).map((mode) => (
+                    <button className={appMode === mode ? "active" : ""} key={mode} onClick={() => setAppMode(mode)}>
+                      {mode === "edit" ? "Edit" : "Run"}
+                    </button>
+                  ))}
+                </div>
                 <div className="edit-mode-tabs" aria-label="edit mode">
                   {(["design", "content", "function"] as EditMode[]).map((mode) => (
                     <button className={editMode === mode ? "active" : ""} key={mode} onClick={() => setEditMode(mode)}>
@@ -1193,6 +1334,7 @@ function App() {
                     }}
                     onPointerDown={(event) => startMove(event, block)}
                     onDoubleClick={() => {
+                      if (appMode === "run") return;
                       setSelectedBlockId(block.id);
                       setEditingBlockId(block.id);
                     }}
@@ -1261,6 +1403,67 @@ function App() {
                 <input type="checkbox" checked={normalizeBlockStyle(selectedBlock.style).fontWeight === "bold"} onChange={(event) => updateBlockStyle(selectedBlock.id, { fontWeight: event.target.checked ? "bold" : "normal" })} />
                 Bold
               </label>
+            </section>
+            <section className="property-section function-section">
+              <h2>Actions</h2>
+              <div className="action-list">
+                {normalizeBlockActions(selectedBlock.actions).map((action) => {
+                  const needsBlockTarget = action.type === "show_block" || action.type === "hide_block" || action.type === "toggle_block";
+                  const needsPageTarget = action.type === "go_page";
+                  return (
+                    <div className="action-card" key={action.id}>
+                      <label className="checkbox-row">
+                        <input type="checkbox" checked={action.enabled} onChange={(event) => updateBlockAction(selectedBlock.id, action.id, { enabled: event.target.checked })} />
+                        Enabled
+                      </label>
+                      <label>
+                        Action
+                        <select value={action.type} onChange={(event) => updateBlockAction(selectedBlock.id, action.id, { type: event.target.value as BlockActionType, targetCode: "", url: action.url })}>
+                          {ACTION_TYPES.map((type) => (
+                            <option key={type} value={type}>
+                              {type}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {needsPageTarget && (
+                        <label>
+                          Target Page
+                          <select value={action.targetCode ?? ""} onChange={(event) => updateBlockAction(selectedBlock.id, action.id, { targetCode: event.target.value })}>
+                            <option value="">Select page</option>
+                            {pageTargets.map((page) => (
+                              <option key={page.id} value={page.code}>
+                                {page.code} {page.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {needsBlockTarget && (
+                        <label>
+                          Target Block
+                          <select value={action.targetCode ?? ""} onChange={(event) => updateBlockAction(selectedBlock.id, action.id, { targetCode: event.target.value })}>
+                            <option value="">Select block</option>
+                            {blockTargets.map((block) => (
+                              <option key={block.id} value={block.code}>
+                                {block.code} {block.content.text || block.type}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {action.type === "open_url" && (
+                        <label>
+                          URL
+                          <input value={action.url ?? ""} placeholder="https://example.com" onChange={(event) => updateBlockAction(selectedBlock.id, action.id, { url: event.target.value })} />
+                        </label>
+                      )}
+                      <button onClick={() => removeBlockAction(selectedBlock.id, action.id)}>Remove</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <button onClick={() => addBlockAction(selectedBlock.id)}>Add action</button>
             </section>
             <section className="property-section design-section">
               <h2>Block</h2>
