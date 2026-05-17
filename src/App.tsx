@@ -1501,7 +1501,7 @@ function App() {
                 그림자
               </label>
             </section>
-            <section className="property-section design-section">
+            <section className="property-section design-section layout-section">
               <h2>Layout</h2>
               {selectedLayout && (
                 <>
