@@ -64,13 +64,15 @@ type SquareBlockStyle = {
   shadow: boolean;
 };
 
+type ValueBlockType = "text_input" | "number_input" | "date_picker" | "time_picker" | "checkbox" | "selector";
+
 type SquareBlock = {
   id: string;
   code: string;
   bookId: string;
   pageId: string;
   parentBlockId?: string;
-  type: "text" | "button" | "container";
+  type: "text" | "button" | "container" | ValueBlockType;
   role: "content" | "control" | "module";
   x: number;
   y: number;
@@ -81,6 +83,9 @@ type SquareBlock = {
     text?: string;
     imageDataUrl?: string;
     imageName?: string;
+    valueRef?: string;
+    options?: string[];
+    placeholder?: string;
   };
   value?: string | number | boolean | null;
   style: SquareBlockStyle;
@@ -194,9 +199,21 @@ function formatCode(prefix: string, value: number) {
   return `${prefix}${String(value).padStart(3, "0")}`;
 }
 
+const VALUE_BLOCK_TYPES: ValueBlockType[] = ["text_input", "number_input", "date_picker", "time_picker", "checkbox", "selector"];
+
+function isValueBlock(type: SquareBlock["type"]): type is ValueBlockType {
+  return VALUE_BLOCK_TYPES.includes(type as ValueBlockType);
+}
+
 function squareTypeLabel(type: SquareBlock["type"]) {
   if (type === "button") return "Button Square";
   if (type === "container") return "Container Square";
+  if (type === "text_input") return "Text Input";
+  if (type === "number_input") return "Number Input";
+  if (type === "date_picker") return "Date Picker";
+  if (type === "time_picker") return "Time Picker";
+  if (type === "checkbox") return "Checkbox";
+  if (type === "selector") return "Selector";
   return "Text Square";
 }
 
@@ -245,6 +262,9 @@ function normalizeBlockContent(content: SquareBlock["content"] | undefined): Squ
     text: content?.text ?? "",
     imageDataUrl: content?.imageDataUrl,
     imageName: content?.imageName,
+    valueRef: content?.valueRef,
+    options: content?.options,
+    placeholder: content?.placeholder,
   };
 }
 
@@ -822,6 +842,15 @@ function App() {
   function findBlockByCode(code: string | undefined) {
     if (!code) return undefined;
     return Object.values(data.blocks).find((block) => block.code === code);
+  }
+
+  function resolveValueRef(code: string): string {
+    const target = findBlockByCode(code);
+    if (!target) return `[${code}?]`;
+    const val = target.value;
+    if (val === null || val === undefined) return "";
+    if (typeof val === "boolean") return val ? "✓" : "✗";
+    return String(val);
   }
 
   function setBlockVisibilityByCode(code: string | undefined, resolver: (visible: boolean) => boolean) {
@@ -1486,16 +1515,81 @@ function App() {
                     onPointerDown={(event) => startMove(event, block)}
                     onDoubleClick={() => {
                       if (appMode === "run") return;
+                      if (isValueBlock(block.type)) return;
                       setSelectedBlockId(block.id);
                       setSelectedBlockIds([block.id]);
                       setEditingBlockId(block.id);
                     }}
                   >
                     {showCodes && block.id === selectedBlockId && <div className="block-code">{block.code}</div>}
-                    {block.content.imageDataUrl && (
+                    {block.content.imageDataUrl && !isValueBlock(block.type) && (
                       <img className="block-image" src={block.content.imageDataUrl} alt={block.content.imageName || ""} draggable={false} />
                     )}
-                    {editingBlockId === block.id ? (
+                    {isValueBlock(block.type) ? (
+                      appMode === "run" ? (
+                        <div className="block-value-run" onPointerDown={(event) => event.stopPropagation()}>
+                          {block.type === "checkbox" ? (
+                            <label className="block-checkbox-label">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(block.value)}
+                                onChange={(event) => updateBlock(block.id, { value: event.target.checked })}
+                              />
+                              <span className="checkbox-indicator" />
+                              {block.content.text && <span>{block.content.text}</span>}
+                            </label>
+                          ) : block.type === "selector" ? (
+                            <select
+                              className="block-run-select"
+                              value={String(block.value ?? "")}
+                              onChange={(event) => updateBlock(block.id, { value: event.target.value || null })}
+                            >
+                              <option value="">{block.content.placeholder || "선택..."}</option>
+                              {(block.content.options ?? []).map((opt, i) => (
+                                <option key={i} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              className="block-run-input"
+                              type={
+                                block.type === "number_input" ? "number" :
+                                block.type === "date_picker" ? "date" :
+                                block.type === "time_picker" ? "time" : "text"
+                              }
+                              value={String(block.value ?? "")}
+                              placeholder={block.content.placeholder ?? block.content.text ?? ""}
+                              onChange={(event) => {
+                                const raw = event.target.value;
+                                updateBlock(block.id, {
+                                  value: block.type === "number_input"
+                                    ? (raw === "" ? null : Number(raw))
+                                    : (raw || null),
+                                });
+                              }}
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <div className="block-value-preview">
+                          {block.type === "checkbox" ? (
+                            <label className="block-checkbox-preview">
+                              <span className={`checkbox-visual ${block.value ? "checked" : ""}`} />
+                              <span>{block.content.text || squareTypeLabel(block.type)}</span>
+                            </label>
+                          ) : (
+                            <>
+                              <div className="value-type-badge">{squareTypeLabel(block.type)}</div>
+                              {(block.value !== null && block.value !== undefined && block.value !== "") ? (
+                                <div className="block-value-text">{String(block.value)}</div>
+                              ) : (
+                                <div className="block-value-placeholder">{block.content.placeholder || block.content.text || ""}</div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )
+                    ) : editingBlockId === block.id ? (
                       <textarea
                         autoFocus
                         value={block.content.text ?? ""}
@@ -1503,6 +1597,13 @@ function App() {
                         onBlur={() => setEditingBlockId(null)}
                         onPointerDown={(event) => event.stopPropagation()}
                       />
+                    ) : block.content.valueRef ? (
+                      <div
+                        className="block-text block-value-display"
+                        style={{ left: 10 + style.textOffsetX, top: (showCodes && block.id === selectedBlockId ? 30 : 10) + style.textOffsetY, textAlign: style.textAlign }}
+                      >
+                        {resolveValueRef(block.content.valueRef)}
+                      </div>
                     ) : block.content.text ? (
                       <div
                         className="block-text"
@@ -1533,12 +1634,131 @@ function App() {
         {selectedBlock ? (
           <div className="property-list">
             {showCodes && <div className="selected-code">{selectedBlock.code}</div>}
-            <section className="property-section content-section">
-              <h2>Text</h2>
+            <section className="property-section type-section">
+              <h2>Square Type</h2>
               <label>
-                내용
-                <textarea value={selectedBlock.content.text ?? ""} onChange={(event) => updateBlock(selectedBlock.id, { content: { ...selectedBlock.content, text: event.target.value } })} />
+                타입
+                <select value={selectedBlock.type} onChange={(event) => updateBlock(selectedBlock.id, { type: event.target.value as SquareBlock["type"] })}>
+                  <option value="text">Text Square</option>
+                  <option value="button">Button Square</option>
+                  <option value="container">Container Square</option>
+                  <optgroup label="Value Blocks">
+                    <option value="text_input">Text Input</option>
+                    <option value="number_input">Number Input</option>
+                    <option value="date_picker">Date Picker</option>
+                    <option value="time_picker">Time Picker</option>
+                    <option value="checkbox">Checkbox</option>
+                    <option value="selector">Selector</option>
+                  </optgroup>
+                </select>
               </label>
+            </section>
+            {isValueBlock(selectedBlock.type) && (
+              <section className="property-section value-section">
+                <h2>Value Settings</h2>
+                <div className="value-current">
+                  <span className="value-label-text">현재 값</span>
+                  <span className="value-current-text">
+                    {selectedBlock.value === null || selectedBlock.value === undefined ? "(없음)" : String(selectedBlock.value)}
+                  </span>
+                </div>
+                {selectedBlock.type === "checkbox" ? (
+                  <>
+                    <label>
+                      레이블
+                      <input
+                        value={selectedBlock.content.text ?? ""}
+                        onChange={(event) => updateBlock(selectedBlock.id, { content: { ...selectedBlock.content, text: event.target.value } })}
+                      />
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selectedBlock.value)}
+                        onChange={(event) => updateBlock(selectedBlock.id, { value: event.target.checked })}
+                      />
+                      기본값 체크됨
+                    </label>
+                  </>
+                ) : selectedBlock.type === "selector" ? (
+                  <>
+                    <label>
+                      Placeholder
+                      <input
+                        value={selectedBlock.content.placeholder ?? ""}
+                        placeholder="선택..."
+                        onChange={(event) => updateBlock(selectedBlock.id, { content: { ...selectedBlock.content, placeholder: event.target.value } })}
+                      />
+                    </label>
+                    <div className="options-editor">
+                      <div className="options-head">
+                        <span>옵션 목록</span>
+                        <button
+                          onClick={() => updateBlock(selectedBlock.id, {
+                            content: { ...selectedBlock.content, options: [...(selectedBlock.content.options ?? []), ""] },
+                          })}
+                        >
+                          + 추가
+                        </button>
+                      </div>
+                      {(selectedBlock.content.options ?? []).map((opt, index) => (
+                        <div className="option-row" key={index}>
+                          <input
+                            value={opt}
+                            onChange={(event) => {
+                              const opts = [...(selectedBlock.content.options ?? [])];
+                              opts[index] = event.target.value;
+                              updateBlock(selectedBlock.id, { content: { ...selectedBlock.content, options: opts } });
+                            }}
+                          />
+                          <button
+                            onClick={() => updateBlock(selectedBlock.id, {
+                              content: { ...selectedBlock.content, options: (selectedBlock.content.options ?? []).filter((_, i) => i !== index) },
+                            })}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <label>
+                    Placeholder
+                    <input
+                      value={selectedBlock.content.placeholder ?? ""}
+                      onChange={(event) => updateBlock(selectedBlock.id, { content: { ...selectedBlock.content, placeholder: event.target.value } })}
+                    />
+                  </label>
+                )}
+              </section>
+            )}
+            <section className="property-section content-section">
+              <h2>{isValueBlock(selectedBlock.type) ? "Value Display" : "Text"}</h2>
+              {!isValueBlock(selectedBlock.type) && (
+                <label>
+                  내용
+                  <textarea value={selectedBlock.content.text ?? ""} onChange={(event) => updateBlock(selectedBlock.id, { content: { ...selectedBlock.content, text: event.target.value } })} />
+                </label>
+              )}
+              {!isValueBlock(selectedBlock.type) && (
+                <label>
+                  값 참조 (Value Ref)
+                  <select
+                    value={selectedBlock.content.valueRef ?? ""}
+                    onChange={(event) => updateBlock(selectedBlock.id, { content: { ...selectedBlock.content, valueRef: event.target.value || undefined } })}
+                  >
+                    <option value="">없음</option>
+                    {blockTargets
+                      .filter((b) => isValueBlock(b.type) && b.id !== selectedBlock.id)
+                      .map((b) => (
+                        <option key={b.id} value={b.code}>
+                          {b.code} {b.content.text || b.content.placeholder || squareTypeLabel(b.type)}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
               <div className="image-tools">
                 <div className="image-tool-head">
                   <span>이미지</span>
