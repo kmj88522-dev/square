@@ -31,7 +31,7 @@ type TextAlign = "left" | "center" | "right";
 type FontWeight = "normal" | "bold";
 type EditMode = "design" | "content" | "function";
 type DeviceMode = "desktop" | "tablet" | "mobile";
-type AppMode = "edit" | "run";
+type AppMode = "edit" | "run" | "remote";
 type BlockActionType = "go_page" | "show_block" | "hide_block" | "toggle_block" | "open_url";
 
 type BlockAction = {
@@ -198,6 +198,15 @@ function squareTypeLabel(type: SquareBlock["type"]) {
   if (type === "button") return "Button Square";
   if (type === "container") return "Container Square";
   return "Text Square";
+}
+
+function remoteActionLabel(action: BlockAction): string {
+  if (action.type === "go_page") return `→ ${action.targetCode || "?"}`;
+  if (action.type === "show_block") return `show ${action.targetCode || "?"}`;
+  if (action.type === "hide_block") return `hide ${action.targetCode || "?"}`;
+  if (action.type === "toggle_block") return `toggle ${action.targetCode || "?"}`;
+  if (action.type === "open_url") return "open URL";
+  return action.type;
 }
 
 function squareActionLabel(type: BlockActionType) {
@@ -466,6 +475,9 @@ function App() {
     if (!currentPage) return [];
     return currentPage.blockIds.map((id) => data.blocks[id]).filter(Boolean);
   }, [currentPage, data.blocks]);
+  const remoteBlocks = useMemo(() => {
+    return currentBlocks.filter((block) => normalizeBlockActions(block.actions).some((action) => action.enabled));
+  }, [currentBlocks]);
   const currentPath = useMemo(() => {
     if (!activeBook || !currentPage) return [];
     const pages: SquarePage[] = [];
@@ -837,6 +849,23 @@ function App() {
     if (deviceMode === "desktop") updateBlock(target.id, { visible });
   }
 
+  function executeSingleAction(action: BlockAction) {
+    if (action.type === "go_page") {
+      const page = findPageByCode(action.targetCode);
+      if (!page) { setToast(`Target ${action.targetCode || ""} not found`); return; }
+      selectPage(page.id);
+    } else if (action.type === "show_block") {
+      setBlockVisibilityByCode(action.targetCode, () => true);
+    } else if (action.type === "hide_block") {
+      setBlockVisibilityByCode(action.targetCode, () => false);
+    } else if (action.type === "toggle_block") {
+      setBlockVisibilityByCode(action.targetCode, (visible) => !visible);
+    } else if (action.type === "open_url") {
+      if (!action.url) { setToast("URL is empty"); return; }
+      window.open(action.url, "_blank", "noopener,noreferrer");
+    }
+  }
+
   function executeBlockActions(block: SquareBlock) {
     normalizeBlockActions(block.actions)
       .filter((action) => action.enabled && action.event === "click")
@@ -1095,6 +1124,7 @@ function App() {
       executeBlockActions(block);
       return;
     }
+    if (appMode === "remote") return;
     if (editingBlockId === block.id) return;
     event.stopPropagation();
     const layout = getBlockLayout(block);
@@ -1375,9 +1405,9 @@ function App() {
               )}
               <div className="canvas-actions">
                 <div className="app-mode-tabs" aria-label="app mode">
-                  {(["edit", "run"] as AppMode[]).map((mode) => (
+                  {(["edit", "run", "remote"] as AppMode[]).map((mode) => (
                     <button className={appMode === mode ? "active" : ""} key={mode} onClick={() => setAppMode(mode)}>
-                      {mode === "edit" ? "Edit" : "Run"}
+                      {mode === "edit" ? "Edit" : mode === "run" ? "Run" : "Remote"}
                     </button>
                   ))}
                 </div>
@@ -1458,7 +1488,7 @@ function App() {
               {currentBlocks.map((block) => {
                 const style = normalizeBlockStyle(block.style);
                 const layout = getBlockLayout(block);
-                if (!layout.visible && appMode === "run") return null;
+                if (!layout.visible && (appMode === "run" || appMode === "remote")) return null;
                 return (
                   <div
                     className={[
@@ -1520,6 +1550,38 @@ function App() {
               })}
               {alignmentGuide?.x !== undefined && <div className="alignment-guide vertical" style={{ left: alignmentGuide.x }} />}
               {alignmentGuide?.y !== undefined && <div className="alignment-guide horizontal" style={{ top: alignmentGuide.y }} />}
+              {appMode === "remote" && (
+                <div className="remote-panel">
+                  <div className="remote-panel-head">
+                    <span className="remote-panel-title">Remote Control</span>
+                    <button className="remote-close" onClick={() => setAppMode("run")}>✕</button>
+                  </div>
+                  {remoteBlocks.length === 0 ? (
+                    <p className="remote-empty">현재 페이지에 액션이 있는 Square가 없습니다.</p>
+                  ) : (
+                    <div className="remote-list">
+                      {remoteBlocks.map((block) => {
+                        const actions = normalizeBlockActions(block.actions).filter((a) => a.enabled);
+                        return (
+                          <div className="remote-item" key={block.id}>
+                            <div className="remote-item-label">
+                              <span className="remote-item-code">{block.code}</span>
+                              <span className="remote-item-name">{block.content.text || squareTypeLabel(block.type)}</span>
+                            </div>
+                            <div className="remote-item-actions">
+                              {actions.map((action) => (
+                                <button className="remote-action-btn" key={action.id} onClick={() => executeSingleAction(action)}>
+                                  {remoteActionLabel(action)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}
