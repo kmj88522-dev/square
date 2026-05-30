@@ -202,10 +202,10 @@ function squareTypeLabel(type: SquareBlock["type"]) {
 
 function remoteActionLabel(action: BlockAction): string {
   if (action.type === "go_page") return `→ ${action.targetCode || "?"}`;
-  if (action.type === "show_block") return `show ${action.targetCode || "?"}`;
-  if (action.type === "hide_block") return `hide ${action.targetCode || "?"}`;
-  if (action.type === "toggle_block") return `toggle ${action.targetCode || "?"}`;
-  if (action.type === "open_url") return "open URL";
+  if (action.type === "show_block") return `보이기 ${action.targetCode || "?"}`;
+  if (action.type === "hide_block") return `숨기기 ${action.targetCode || "?"}`;
+  if (action.type === "toggle_block") return `토글 ${action.targetCode || "?"}`;
+  if (action.type === "open_url") return "URL 열기";
   return action.type;
 }
 
@@ -1407,7 +1407,7 @@ function App() {
                 <div className="app-mode-tabs" aria-label="app mode">
                   {(["edit", "run", "remote"] as AppMode[]).map((mode) => (
                     <button className={appMode === mode ? "active" : ""} key={mode} onClick={() => setAppMode(mode)}>
-                      {mode === "edit" ? "Edit" : mode === "run" ? "Run" : "Remote"}
+                      {mode === "edit" ? "Edit" : mode === "run" ? "Run" : "리모컨"}
                     </button>
                   ))}
                 </div>
@@ -1553,7 +1553,7 @@ function App() {
               {appMode === "remote" && (
                 <div className="remote-panel">
                   <div className="remote-panel-head">
-                    <span className="remote-panel-title">Remote Control</span>
+                    <span className="remote-panel-title">리모컨</span>
                     <button className="remote-close" onClick={() => setAppMode("run")}>✕</button>
                   </div>
                   {remoteBlocks.length === 0 ? (
