@@ -16,7 +16,7 @@ type DaySchedule = {
 type AppConfig = {
   teamPreset: TeamPreset;
   customReferenceDangDate: string;
-  schedules: Record<string, DaySchedule>;
+  schedules: Record<string, DaySchedule[]>;
   googleClientId: string;
   googleCalendarId: string;
   alarmFirstMinutes: number;
@@ -31,12 +31,12 @@ type CalendarDay = {
   isCurrentMonth: boolean;
   isToday: boolean;
   shift: ShiftType;
-  schedule?: DaySchedule;
+  schedules: DaySchedule[];
 };
 
 type TokenClient = { requestAccessToken: () => void };
 
-const STORAGE_KEY = "firefighter-shift-v2";
+const STORAGE_KEY = "firefighter-shift-v3";
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 const EXCEPTION_TYPES: ExceptionType[] = ["연가", "교육", "출장", "병가", "기타"];
 
@@ -54,7 +54,10 @@ const EX_COLORS: Record<ExceptionType, string> = {
   기타: "#f97316",
 };
 
-const SCHED_COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#3b82f6","#8b5cf6","#ec4899","#64748b"];
+const SCHED_COLORS = [
+  "#fca5a5", "#fed7aa", "#fde68a", "#bbf7d0",
+  "#bfdbfe", "#ddd6fe", "#fbcfe8", "#e2e8f0",
+];
 
 const DEFAULT_CONFIG: AppConfig = {
   teamPreset: "2팀",
@@ -66,6 +69,10 @@ const DEFAULT_CONFIG: AppConfig = {
   alarmInterval: 10,
   alarmCount: 5,
 };
+
+function newSched(dateStr: string): DaySchedule {
+  return { title: "", note: "", location: "", endDate: dateStr, color: SCHED_COLORS[4] };
+}
 
 function pad(n: number) { return String(n).padStart(2, "0"); }
 function todayStr() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
@@ -90,16 +97,16 @@ function buildDays(year: number, month: number, config: AppConfig): CalendarDay[
   for (let i = 0; i < first.getDay(); i++) {
     const d = new Date(year, month, 1 - first.getDay() + i);
     const ds = dateToStr(d);
-    days.push({dateStr:ds, dayOfMonth:d.getDate(), dayOfWeek:d.getDay(), isCurrentMonth:false, isToday:ds===today, shift:getShift(ds,ref)});
+    days.push({dateStr:ds, dayOfMonth:d.getDate(), dayOfWeek:d.getDay(), isCurrentMonth:false, isToday:ds===today, shift:getShift(ds,ref), schedules:[]});
   }
   for (let day = 1; day <= last.getDate(); day++) {
     const ds = `${year}-${pad(month+1)}-${pad(day)}`;
-    days.push({dateStr:ds, dayOfMonth:day, dayOfWeek:new Date(year,month,day).getDay(), isCurrentMonth:true, isToday:ds===today, shift:getShift(ds,ref), schedule:config.schedules[ds]});
+    days.push({dateStr:ds, dayOfMonth:day, dayOfWeek:new Date(year,month,day).getDay(), isCurrentMonth:true, isToday:ds===today, shift:getShift(ds,ref), schedules:config.schedules[ds]??[]});
   }
   for (let i = 1; days.length < 42; i++) {
     const d = new Date(year, month+1, i);
     const ds = dateToStr(d);
-    days.push({dateStr:ds, dayOfMonth:d.getDate(), dayOfWeek:d.getDay(), isCurrentMonth:false, isToday:ds===today, shift:getShift(ds,ref)});
+    days.push({dateStr:ds, dayOfMonth:d.getDate(), dayOfWeek:d.getDay(), isCurrentMonth:false, isToday:ds===today, shift:getShift(ds,ref), schedules:[]});
   }
   return days;
 }
@@ -129,11 +136,12 @@ async function syncToGcal(token: string, config: AppConfig): Promise<number> {
   while (cur <= end) {
     const ds = dateToStr(cur);
     if (getShift(ds, ref) === "당") {
-      const s = config.schedules[ds];
-      const ex = s?.exceptionType;
+      const scheds = config.schedules[ds] ?? [];
+      const ex = scheds.find(s => s.exceptionType)?.exceptionType;
+      const notes = scheds.map(s => [s.title, s.note].filter(Boolean).join(": ")).filter(Boolean).join("\n");
       const res = await gcalFetch(token,"POST",`/calendars/${encodeURIComponent(config.googleCalendarId)}/events`,{
         summary: ex ? `소방 당번 (${ex})` : "소방 당번",
-        description: [s?.title, s?.note, s?.location].filter(Boolean).join("\n"),
+        description: notes,
         start:{dateTime:`${ds}T09:00:00+09:00`, timeZone:"Asia/Seoul"},
         end:{dateTime:`${addDays(ds,1)}T09:00:00+09:00`, timeZone:"Asia/Seoul"},
         colorId: ex?"2":"5",
@@ -181,8 +189,12 @@ export default function App() {
   }, [config.googleClientId]);
 
   function patch(p: Partial<AppConfig>) { setConfig(c => ({...c,...p})); }
-  function setSched(ds: string, s: DaySchedule|null) {
-    setConfig(c => { const schedules={...c.schedules}; if(s) schedules[ds]=s; else delete schedules[ds]; return {...c,schedules}; });
+  function setScheds(ds: string, scheds: DaySchedule[]) {
+    setConfig(c => {
+      const schedules = {...c.schedules};
+      if (scheds.length > 0) schedules[ds] = scheds; else delete schedules[ds];
+      return {...c, schedules};
+    });
   }
   function prevMonth() { if(month===0){setYear(y=>y-1);setMonth(11);}else setMonth(m=>m-1); }
   function nextMonth() { if(month===11){setYear(y=>y+1);setMonth(0);}else setMonth(m=>m+1); }
@@ -205,12 +217,11 @@ export default function App() {
   const todayShift = getShift(today, ref);
   const tmrDate = addDays(today, 1);
   const tmrShift = getShift(tmrDate, ref);
-  const todayEx = config.schedules[today]?.exceptionType;
-  const tmrEx = config.schedules[tmrDate]?.exceptionType;
+  const todayEx = (config.schedules[today]??[]).find(s=>s.exceptionType)?.exceptionType;
+  const tmrEx = (config.schedules[tmrDate]??[]).find(s=>s.exceptionType)?.exceptionType;
   const todayLabel = todayEx ?? (todayShift==="당"?"당번":"비번");
   const tmrLabel = tmrEx ?? (tmrShift==="당"?"당번":"비번");
   const showAlarm = tmrShift==="당" && !tmrEx;
-  const todayDow = DAY_LABELS[new Date(today+"T12:00:00").getDay()];
 
   return (
     <div className="app">
@@ -241,9 +252,12 @@ export default function App() {
           <div className="cal-grid">
             {days.map(day => {
               const isDang = day.shift==="당";
-              const ex = day.schedule?.exceptionType;
-              const badgeColor = isDang ? (ex ? EX_COLORS[ex] : "#f59e0b") : null;
-              const schedText = day.schedule?.title || day.schedule?.note;
+              const exType = day.schedules.find(s=>s.exceptionType)?.exceptionType;
+              const badgeColor = isDang ? (exType ? EX_COLORS[exType] : "#f59e0b") : null;
+              const withText = day.schedules.filter(s => s.title || s.note);
+              const visible = withText.slice(0, 2);
+              const extra = withText.length - 2;
+
               return (
                 <button
                   key={day.dateStr}
@@ -256,12 +270,17 @@ export default function App() {
                     </span>
                     {day.isCurrentMonth && (
                       isDang
-                        ? <span className="badge-dang" style={ex?{background:badgeColor!}:undefined}>{ex?ex[0]:"당"}</span>
+                        ? <span className="badge-dang" style={exType?{background:badgeColor!}:undefined}>{exType?exType[0]:"당"}</span>
                         : <span className="label-bi">비</span>
                     )}
                   </div>
-                  {day.isCurrentMonth && schedText && (
-                    <div className="cell-sched" style={day.schedule?.color ? {background:day.schedule.color, color:"#fff"} : undefined}>{schedText}</div>
+                  {day.isCurrentMonth && visible.length > 0 && (
+                    <div className="cell-scheds">
+                      {visible.map((s, i) => (
+                        <div key={i} className="cell-sched" style={{background:s.color}}>{s.title||s.note}</div>
+                      ))}
+                      {extra > 0 && <div className="cell-more">+{extra}</div>}
+                    </div>
                   )}
                 </button>
               );
@@ -347,9 +366,8 @@ export default function App() {
             <DaySheet
               dateStr={selectedDate}
               shift={getShift(selectedDate, ref)}
-              schedule={config.schedules[selectedDate]}
-              onSave={s => { setSched(selectedDate, s); setSelectedDate(null); }}
-              onRemove={() => { setSched(selectedDate, null); setSelectedDate(null); }}
+              schedules={config.schedules[selectedDate]??[]}
+              onSaveAll={scheds => setScheds(selectedDate, scheds)}
               onClose={() => setSelectedDate(null)}
             />
           </div>
@@ -366,90 +384,140 @@ function SettingsRow({label, children}: {label:string; children:React.ReactNode}
   return <div className="settings-row"><span className="row-label">{label}</span><div className="row-control">{children}</div></div>;
 }
 
-function DaySheet({dateStr, shift, schedule, onSave, onRemove, onClose}: {
-  dateStr:string; shift:ShiftType; schedule?:DaySchedule;
-  onSave:(s:DaySchedule)=>void; onRemove:()=>void; onClose:()=>void;
+function DaySheet({dateStr, shift, schedules, onSaveAll, onClose}: {
+  dateStr: string;
+  shift: ShiftType;
+  schedules: DaySchedule[];
+  onSaveAll: (s: DaySchedule[]) => void;
+  onClose: () => void;
 }) {
-  const [exType, setExType] = useState<ExceptionType|undefined>(schedule?.exceptionType);
-  const [title, setTitle] = useState(schedule?.title??"");
-  const [note, setNote] = useState(schedule?.note??"");
-  const [location, setLocation] = useState(schedule?.location??"");
-  const [endDate, setEndDate] = useState(schedule?.endDate??dateStr);
-  const [color, setColor] = useState(schedule?.color??SCHED_COLORS[4]);
-  const [y,m,d] = dateStr.split("-");
-  const isDang = shift==="당";
-  const badgeColor = isDang ? (exType ? EX_COLORS[exType] : "#f59e0b") : null;
-  const shiftLabel = exType ?? (isDang?"당번":"비번");
+  const [items, setItems] = useState<DaySchedule[]>(schedules);
+  // null=목록, -1=새 일정, 0+=편집
+  const [editIdx, setEditIdx] = useState<number|null>(schedules.length === 0 ? -1 : null);
+  const [form, setForm] = useState<DaySchedule>(newSched(dateStr));
 
-  return (
-    <>
-      <div className="sheet-top">
-        <div>
-          <p className="sheet-date">{y}년 {Number(m)}월 {Number(d)}일</p>
-          <div className="sheet-shift-row">
-            {isDang && <span className="sheet-badge" style={{background:badgeColor!}}>{exType?exType[0]:"당"}</span>}
-            <span className={`sheet-shift-label ${isDang?"dang":"bi"}`}>{shiftLabel}</span>
-          </div>
+  const [y, m, d] = dateStr.split("-");
+  const isDang = shift === "당";
+  const activeEx = items.find(s => s.exceptionType)?.exceptionType;
+  const badgeColor = isDang ? (activeEx ? EX_COLORS[activeEx] : "#f59e0b") : null;
+  const shiftLabel = activeEx ?? (isDang ? "당번" : "비번");
+
+  function startAdd() { setForm(newSched(dateStr)); setEditIdx(-1); }
+  function startEdit(i: number) { setForm({...items[i]}); setEditIdx(i); }
+  function deleteItem(i: number) {
+    const next = items.filter((_,j) => j !== i);
+    setItems(next); onSaveAll(next);
+  }
+  function saveForm() {
+    const next = editIdx === -1 ? [...items, form] : items.map((s,i) => i===editIdx ? form : s);
+    setItems(next); onSaveAll(next); setEditIdx(null);
+  }
+  function pf(p: Partial<DaySchedule>) { setForm(f => ({...f,...p})); }
+
+  const shiftHeader = (
+    <div className="sheet-top">
+      <div>
+        <p className="sheet-date">{y}년 {Number(m)}월 {Number(d)}일</p>
+        <div className="sheet-shift-row">
+          {isDang && <span className="sheet-badge" style={{background:badgeColor!}}>{activeEx?activeEx[0]:"당"}</span>}
+          <span className={`sheet-shift-label ${isDang?"dang":"bi"}`}>{shiftLabel}</span>
         </div>
-        <button className="close-btn" onClick={onClose}>✕</button>
       </div>
+      <button className="close-btn" onClick={editIdx !== null ? () => setEditIdx(null) : onClose}>
+        {editIdx !== null ? "‹" : "✕"}
+      </button>
+    </div>
+  );
 
-      <div className="sched-form">
-        <p className="sched-form-title">일정 추가</p>
+  // 폼 뷰 (추가 / 편집)
+  if (editIdx !== null) {
+    return (
+      <>
+        {shiftHeader}
+        <div className="sched-form">
+          <p className="sched-form-title">{editIdx === -1 ? "일정 추가" : "일정 편집"}</p>
 
-        {isDang && (
+          {isDang && (
+            <div className="field-group">
+              <p className="field-label">근무 변경</p>
+              <div className="ex-type-list">
+                <button className={`ex-type-btn ${!form.exceptionType?"active":""}`} onClick={() => pf({exceptionType:undefined})}>당번</button>
+                {EXCEPTION_TYPES.map(t => (
+                  <button key={t}
+                    className={`ex-type-btn ${form.exceptionType===t?"active":""}`}
+                    style={form.exceptionType===t?{borderColor:EX_COLORS[t],background:EX_COLORS[t]+"22",color:EX_COLORS[t]}:undefined}
+                    onClick={() => pf({exceptionType:form.exceptionType===t?undefined:t})}
+                  >{t}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="field-group">
-            <p className="field-label">근무 변경</p>
-            <div className="ex-type-list">
-              <button className={`ex-type-btn ${!exType?"active":""}`} onClick={() => setExType(undefined)}>당번</button>
-              {EXCEPTION_TYPES.map(t => (
-                <button key={t}
-                  className={`ex-type-btn ${exType===t?"active":""}`}
-                  style={exType===t ? {borderColor:EX_COLORS[t], background:EX_COLORS[t]+"22", color:EX_COLORS[t]} : undefined}
-                  onClick={() => setExType(p => p===t?undefined:t)}
-                >{t}</button>
+            <label className="field-label">제목</label>
+            <input className="field-input" type="text" placeholder="일정 제목" value={form.title} onChange={e=>pf({title:e.target.value})} />
+          </div>
+          <div className="field-group">
+            <label className="field-label">내용</label>
+            <textarea className="field-input field-textarea" placeholder="메모" value={form.note} onChange={e=>pf({note:e.target.value})} rows={2} />
+          </div>
+          <div className="field-row-two">
+            <div className="field-group">
+              <label className="field-label">시작일</label>
+              <input className="field-input" type="date" value={dateStr} disabled />
+            </div>
+            <div className="field-group">
+              <label className="field-label">종료일</label>
+              <input className="field-input" type="date" value={form.endDate} min={dateStr} onChange={e=>pf({endDate:e.target.value})} />
+            </div>
+          </div>
+          <div className="field-group">
+            <label className="field-label">위치</label>
+            <input className="field-input" type="text" placeholder="장소" value={form.location} onChange={e=>pf({location:e.target.value})} />
+          </div>
+          <div className="field-group">
+            <label className="field-label">색상</label>
+            <div className="color-picker">
+              {SCHED_COLORS.map(c => (
+                <button key={c} className={`color-dot ${form.color===c?"selected":""}`} style={{background:c}} onClick={() => pf({color:c})} />
               ))}
             </div>
           </div>
-        )}
 
-        <div className="field-group">
-          <label className="field-label">제목</label>
-          <input className="field-input" type="text" placeholder="일정 제목" value={title} onChange={e=>setTitle(e.target.value)} />
+          <button className="btn-save" onClick={saveForm}>저장</button>
         </div>
-        <div className="field-group">
-          <label className="field-label">내용</label>
-          <textarea className="field-input field-textarea" placeholder="메모" value={note} onChange={e=>setNote(e.target.value)} rows={2} />
-        </div>
-        <div className="field-row-two">
-          <div className="field-group">
-            <label className="field-label">시작일</label>
-            <input className="field-input" type="date" value={dateStr} disabled />
-          </div>
-          <div className="field-group">
-            <label className="field-label">종료일</label>
-            <input className="field-input" type="date" value={endDate} min={dateStr} onChange={e=>setEndDate(e.target.value)} />
-          </div>
-        </div>
-        <div className="field-group">
-          <label className="field-label">위치</label>
-          <input className="field-input" type="text" placeholder="장소" value={location} onChange={e=>setLocation(e.target.value)} />
-        </div>
+      </>
+    );
+  }
 
-        <div className="field-group">
-          <label className="field-label">색상</label>
-          <div className="color-picker">
-            {SCHED_COLORS.map(c => (
-              <button key={c} className={`color-dot ${color===c?"selected":""}`} style={{background:c}} onClick={() => setColor(c)} />
-            ))}
+  // 목록 뷰
+  return (
+    <>
+      {shiftHeader}
+      <div className="sched-list">
+        {items.length === 0 && <p className="sched-empty">일정이 없습니다</p>}
+        {items.map((s, i) => (
+          <div key={i} className="sched-item">
+            <div className="sched-item-color" style={{background:s.color}} />
+            <div className="sched-item-body">
+              {s.exceptionType && (
+                <span className="sched-ex-badge" style={{color:EX_COLORS[s.exceptionType], borderColor:EX_COLORS[s.exceptionType]}}>
+                  {s.exceptionType}
+                </span>
+              )}
+              <p className="sched-item-title">{s.title || "(제목 없음)"}</p>
+              {s.note && <p className="sched-item-sub">{s.note}</p>}
+              {s.location && <p className="sched-item-sub">📍 {s.location}</p>}
+              {s.endDate !== dateStr && <p className="sched-item-sub">~ {s.endDate}</p>}
+            </div>
+            <div className="sched-item-actions">
+              <button className="sched-edit-btn" onClick={() => startEdit(i)}>편집</button>
+              <button className="sched-del-btn" onClick={() => deleteItem(i)}>삭제</button>
+            </div>
           </div>
-        </div>
-
-        <div className="sheet-btn-row">
-          {schedule && <button className="btn-remove" onClick={onRemove}>삭제</button>}
-          <button className="btn-save" onClick={() => onSave({exceptionType:exType, title, note, location, endDate, color})}>저장</button>
-        </div>
+        ))}
       </div>
+      <button className="btn-add-sched" onClick={startAdd}>+ 일정 추가</button>
     </>
   );
 }
