@@ -1,4 +1,4 @@
-name: Deploy Square to gh-pages
+name: Deploy 교대근무 앱 to gh-pages
 
 on:
   push:
